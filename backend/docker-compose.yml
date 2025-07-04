@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  # Redis for Celery broker
+  redis:
+    image: redis:7-alpine
+    container_name: tinyml_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # PostgreSQL database (for production)
+  db:
+    image: postgres:13-alpine
+    container_name: tinyml_db
+    environment:
+      POSTGRES_DB: tinyml_optimizer
+      POSTGRES_USER: tinyml_user
+      POSTGRES_PASSWORD: tinyml_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinyml_user -d tinyml_optimizer"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Flask web application
+  web:
+    build: .
+    container_name: tinyml_web
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://tinyml_user:tinyml_password@db:5432/tinyml_optimizer
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=your-production-secret-key-change-this
+      - FLASK_ENV=production
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Celery worker for background tasks
+  worker:
+    build: .
+    container_name: tinyml_worker
+    command: celery -A celery_worker.celery worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql://tinyml_user:tinyml_password@db:5432/tinyml_optimizer
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=your-production-secret-key-change-this
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery monitor (optional)
+  flower:
+    build: .
+    container_name: tinyml_flower
+    command: celery -A celery_worker.celery flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: tinyml_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: tinyml_network
