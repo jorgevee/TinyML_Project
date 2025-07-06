@@ -312,6 +312,145 @@ services:
 - **Rate Limiting**: Ready for rate limiting implementation
 - **Authentication**: JWT-ready authentication system
 
+## TODO List
+
+### 🚨 Critical for MVP (Must Complete Before Open Source)
+
+#### Frontend Implementation
+- [ ] **Complete NextJS frontend** - Currently only directory structure exists
+  - [ ] Model upload component with drag-and-drop
+  - [ ] Project dashboard with job status tracking
+  - [ ] Results visualization with charts and metrics
+  - [ ] Subscription management interface
+  - [ ] Real-time progress updates via WebSocket
+
+#### Core Optimization Engine
+- [ ] **Replace simulation with real optimization algorithms**
+  - [ ] Implement actual TensorFlow quantization using TF Lite
+  - [ ] Implement PyTorch quantization using torch.quantization
+  - [ ] Real model pruning implementation
+  - [ ] Integrate with ONNX optimization tools
+  - [ ] Real Neural Architecture Search (NAS) implementation
+
+#### Authentication & User Management
+- [ ] **User registration and login system**
+  - [ ] JWT-based authentication
+  - [ ] Password reset functionality
+  - [ ] User profile management
+  - [ ] Session management
+
+#### Model Processing Pipeline
+- [ ] **Real model analysis and conversion**
+  - [ ] Model format validation and parsing
+  - [ ] Framework-specific model loading
+  - [ ] Model complexity analysis
+  - [ ] Error handling for corrupted models
+
+#### Hardware Benchmarking
+- [ ] **Actual performance estimation**
+  - [ ] Hardware-specific performance modeling
+  - [ ] Real memory usage calculation
+  - [ ] Power consumption estimation
+  - [ ] Integration with hardware simulators
+
+### 🔧 Important for MVP
+
+#### Embedded SDK & Runtime
+- [ ] **C/C++ runtime library**
+  - [ ] Model inference engine for microcontrollers
+  - [ ] Memory-optimized operations
+  - [ ] Hardware-specific optimizations
+  - [ ] Example projects for each platform
+
+#### File Management
+- [ ] **Proper file handling**
+  - [ ] Secure file upload with validation
+  - [ ] File storage organization
+  - [ ] Model download functionality
+  - [ ] Cleanup of temporary files
+
+#### Testing & Quality
+- [ ] **Comprehensive test suite**
+  - [ ] Unit tests for all components
+  - [ ] Integration tests for API
+  - [ ] End-to-end testing
+  - [ ] Performance testing
+
+#### Documentation
+- [ ] **Complete documentation**
+  - [ ] API documentation with OpenAPI/Swagger
+  - [ ] SDK documentation
+  - [ ] Tutorial and examples
+  - [ ] Deployment guide
+
+### 🎯 Nice to Have for MVP
+
+#### Advanced Features
+- [ ] **Enhanced optimization options**
+  - [ ] Custom optimization profiles
+  - [ ] Multi-objective optimization
+  - [ ] Accuracy vs size trade-off visualization
+  - [ ] Batch optimization for multiple models
+
+#### Monitoring & Analytics
+- [ ] **Usage analytics and monitoring**
+  - [ ] Job success/failure tracking
+  - [ ] Performance metrics
+  - [ ] User behavior analytics
+  - [ ] Error reporting
+
+#### Enterprise Features
+- [ ] **Team collaboration**
+  - [ ] Team workspaces
+  - [ ] Model sharing
+  - [ ] Role-based access control
+  - [ ] Audit logging
+
+### 📊 Current Implementation Status
+
+| Component | Status | Completion |
+|-----------|--------|------------|
+| Backend API | ✅ Complete | 90% |
+| Database Models | ✅ Complete | 95% |
+| Frontend | ❌ Missing | 5% |
+| Real Optimization | ❌ Simulated | 20% |
+| Authentication | ❌ Missing | 0% |
+| File Management | ⚠️ Basic | 30% |
+| Embedded SDK | ❌ Missing | 0% |
+| Testing | ⚠️ Minimal | 10% |
+| Documentation | ⚠️ API Only | 40% |
+
+### 🚀 Recommended MVP Development Order
+
+1. **Phase 1: Core Functionality (4-6 weeks)**
+   - Implement real optimization algorithms
+   - Build basic frontend with upload/results
+   - Add authentication system
+
+2. **Phase 2: User Experience (3-4 weeks)**
+   - Complete frontend dashboard
+   - Add real-time progress tracking
+   - Implement file management
+
+3. **Phase 3: Hardware Integration (4-5 weeks)**
+   - Develop embedded runtime
+   - Create hardware templates
+   - Add performance benchmarking
+
+4. **Phase 4: Polish & Launch (2-3 weeks)**
+   - Comprehensive testing
+   - Documentation completion
+   - Deployment optimization
+
+### ⚡ Quick Wins for Demo
+
+If you need something demonstrable quickly:
+- [ ] Fix the missing imports in quantization.py (`hashlib`)
+- [ ] Create a simple frontend upload form
+- [ ] Add basic model file validation
+- [ ] Implement simple TensorFlow Lite conversion
+- [ ] Add progress indicators to the existing simulation
+
 ## License
 
 MIT License - see LICENSE file for details.
