@@ -19,7 +19,7 @@ class PruningEngine:
         logger.info(f"Applying pruning with {self.sparsity} sparsity")
         
         # Use the framework-specific optimizer to apply pruning
-        pruned_model, size_reduction = self.optimizer.apply_pruning(self.sparsity)
+        pruned_model, size_reduction = self.optimizer.apply_pruning(self.sparsity, model)
         
         # Calculate accuracy impact
         self._calculate_accuracy_impact()

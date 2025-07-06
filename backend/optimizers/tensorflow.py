@@ -53,9 +53,14 @@ class TensorFlowOptimizer(BaseOptimizer):
         logger.info(f"TensorFlow model analysis: {self.model_info}")
         return self.model_info
     
-    def apply_quantization(self, quantization_type: str) -> Tuple[Any, float]:
+    def apply_quantization(self, quantization_type: str, model: Any = None) -> Tuple[Any, float]:
         """Apply TensorFlow-specific quantization"""
         logger.info(f"Applying {quantization_type} quantization to TensorFlow model")
+        
+        # Use provided model or fallback to self.model
+        target_model = model if model is not None else self.model
+        if target_model is None:
+            target_model = self.load_model()
         
         # Simulate quantization process
         time.sleep(2)
@@ -99,9 +104,14 @@ class TensorFlowOptimizer(BaseOptimizer):
         
         return quantized_model, size_reduction
     
-    def apply_pruning(self, sparsity: float) -> Tuple[Any, float]:
+    def apply_pruning(self, sparsity: float, model: Any = None) -> Tuple[Any, float]:
         """Apply TensorFlow-specific pruning"""
         logger.info(f"Applying pruning with {sparsity} sparsity to TensorFlow model")
+        
+        # Use provided model or fallback to self.model
+        target_model = model if model is not None else self.model
+        if target_model is None:
+            target_model = self.load_model()
         
         # Simulate pruning process
         time.sleep(3)
