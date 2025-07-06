@@ -1,22 +1,23 @@
 """Quantization optimization engine"""
 
-import time
-import hashlib
+# import hashlib
 import pickle
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
 
 class QuantizationEngine:
     """Engine for applying quantization optimizations"""
-    
-    def __init__(self, optimizer, quantization_type: str):
+
+    DEFAULT_MAX_CACHE_SIZE = 10  # Default cache size limit
+
+    def __init__(self, optimizer, quantization_type: str, max_cache_size: int = None):
         self.optimizer = optimizer
         self.quantization_type = quantization_type
         self.accuracy_impact = 1.0
         self._cache = {}  # Cache for quantization results
-        self._max_cache_size = 10  # Limit cache size to prevent memory issues
+        self._max_cache_size = max_cache_size if max_cache_size is not None else self.DEFAULT_MAX_CACHE_SIZE
         
     def apply_quantization(self, model: Any) -> Tuple[Any, float]:
         """Apply quantization to the model with caching"""
@@ -81,7 +82,7 @@ class QuantizationEngine:
             # Try to create a hash of the model's state
             if hasattr(model, 'state_dict'):
                 # PyTorch model
-                model_state = str(model.state_dict())
+                model_state = pickle.dumps((model.state_dict()))
             elif hasattr(model, 'get_weights'):
                 # TensorFlow/Keras model
                 model_state = str([w.shape for w in model.get_weights()])
