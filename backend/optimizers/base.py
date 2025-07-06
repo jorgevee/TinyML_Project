@@ -25,12 +25,12 @@ class BaseOptimizer(ABC):
         pass
     
     @abstractmethod
-    def apply_quantization(self, quantization_type: str) -> Tuple[Any, float]:
+    def apply_quantization(self, quantization_type: str, model: Any = None) -> Tuple[Any, float]:
         """Apply quantization and return (model, size_reduction_factor)"""
         pass
     
     @abstractmethod
-    def apply_pruning(self, sparsity: float) -> Tuple[Any, float]:
+    def apply_pruning(self, sparsity: float, model: Any = None) -> Tuple[Any, float]:
         """Apply pruning and return (model, size_reduction_factor)"""
         pass
     
