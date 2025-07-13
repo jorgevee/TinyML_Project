@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 import os
 import uuid
@@ -7,7 +7,12 @@ from extensions import db
 from models import User, Project, OptimizationJob, BenchmarkResult, Subscription
 from models import SubscriptionTier, OptimizationStatus, HardwareTarget, ModelFramework
 from optimization_pipeline import optimize_model_task
+from processors.upload_processor import process_model_upload
+from validators.model_validator import validate_uploaded_model
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__)
 
@@ -69,6 +74,80 @@ def get_model_frameworks():
     ]
     return jsonify({'model_frameworks': frameworks})
 
+@api_bp.route('/validate-model', methods=['POST'])
+def validate_model_file():
+    """Validate a model file without starting optimization"""
+    try:
+        # Check if file is present
+        if 'model_file' not in request.files:
+            return jsonify({'error': 'No model file provided'}), 400
+        
+        file = request.files['model_file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Get expected framework (optional)
+        expected_framework = request.form.get('model_framework')
+        
+        # Validate the file
+        validation_result = validate_uploaded_model(file, expected_framework)
+        
+        # Add additional metadata
+        response_data = {
+            'validation_result': validation_result,
+            'file_name': file.filename,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        # If validation successful, include recommendations
+        if validation_result['is_valid']:
+            file_info = validation_result.get('file_info', {})
+            response_data['recommendations'] = _get_optimization_recommendations(file_info)
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        logger.error(f"Model validation error: {str(e)}")
+        return jsonify({'error': f'Validation failed: {str(e)}'}), 500
+
+def _get_optimization_recommendations(file_info: dict) -> dict:
+    """Generate optimization recommendations based on model analysis"""
+    recommendations = {
+        'suggested_optimizations': [],
+        'hardware_targets': [],
+        'estimated_compression': {}
+    }
+    
+    total_params = file_info.get('total_params', 0)
+    model_type = file_info.get('model_type', 'unknown')
+    
+    # Recommend optimizations based on model size
+    if total_params > 1_000_000:  # Large model
+        recommendations['suggested_optimizations'].extend([
+            'quantization', 'pruning', 'nas'
+        ])
+        recommendations['estimated_compression']['quantization'] = '50-75%'
+        recommendations['estimated_compression']['pruning'] = '30-60%'
+    elif total_params > 100_000:  # Medium model
+        recommendations['suggested_optimizations'].extend([
+            'quantization', 'pruning'
+        ])
+        recommendations['estimated_compression']['quantization'] = '40-65%'
+        recommendations['estimated_compression']['pruning'] = '20-50%'
+    else:  # Small model
+        recommendations['suggested_optimizations'].append('quantization')
+        recommendations['estimated_compression']['quantization'] = '30-50%'
+    
+    # Recommend hardware targets based on model complexity
+    if total_params < 50_000:
+        recommendations['hardware_targets'] = ['cortex-m4', 'cortex-m7', 'esp32']
+    elif total_params < 500_000:
+        recommendations['hardware_targets'] = ['cortex-m7', 'esp32', 'arm-cortex-a']
+    else:
+        recommendations['hardware_targets'] = ['arm-cortex-a', 'cortex-m7']
+    
+    return recommendations
+
 @api_bp.route('/projects', methods=['POST'])
 def create_project():
     """Create a new project"""
@@ -118,73 +197,77 @@ def get_project(project_id):
 
 @api_bp.route('/projects/<int:project_id>/optimize', methods=['POST'])
 def start_optimization(project_id):
-    """Start a new optimization job"""
-    project = Project.query.get_or_404(project_id)
-    
-    # Check if file is present
-    if 'model_file' not in request.files:
-        return jsonify({'error': 'No model file provided'}), 400
-    
-    file = request.files['model_file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'File type not supported'}), 400
-    
-    # Get form data
-    hardware_target = request.form.get('hardware_target')
-    model_framework = request.form.get('model_framework')
-    target_size_kb = request.form.get('target_size_kb', 100, type=int)
-    target_accuracy = request.form.get('target_accuracy_threshold', 0.95, type=float)
-    
-    # Validate required fields
-    if not hardware_target or not model_framework:
-        return jsonify({'error': 'Hardware target and model framework are required'}), 400
-    
+    """Start a new optimization job with enhanced validation and processing"""
     try:
-        hardware_target_enum = HardwareTarget(hardware_target)
-        model_framework_enum = ModelFramework(model_framework)
-    except ValueError:
-        return jsonify({'error': 'Invalid hardware target or model framework'}), 400
-    
-    # Save uploaded file
-    filename = secure_filename(file.filename)
-    job_id = str(uuid.uuid4())
-    upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], job_id)
-    os.makedirs(upload_path, exist_ok=True)
-    
-    file_path = os.path.join(upload_path, filename)
-    file.save(file_path)
-    
-    # Create optimization job
-    optimization_job = OptimizationJob(
-        project_id=project_id,
-        job_id=job_id,
-        original_model_path=file_path,
-        model_framework=model_framework_enum,
-        hardware_target=hardware_target_enum,
-        target_size_kb=target_size_kb,
-        target_accuracy_threshold=target_accuracy,
-        enable_quantization=request.form.get('enable_quantization', 'true').lower() == 'true',
-        enable_pruning=request.form.get('enable_pruning', 'true').lower() == 'true',
-        enable_nas=request.form.get('enable_nas', 'false').lower() == 'true',
-        quantization_type=request.form.get('quantization_type', 'int8'),
-        pruning_sparsity=request.form.get('pruning_sparsity', 0.5, type=float),
-        original_size_bytes=os.path.getsize(file_path)
-    )
-    
-    try:
-        db.session.add(optimization_job)
-        db.session.commit()
+        # Check if file is present
+        if 'model_file' not in request.files:
+            return jsonify({'error': 'No model file provided'}), 400
+        
+        file = request.files['model_file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Get form data
+        model_framework = request.form.get('model_framework')
+        hardware_target = request.form.get('hardware_target')
+        
+        # Validate required fields
+        if not hardware_target or not model_framework:
+            return jsonify({'error': 'Hardware target and model framework are required'}), 400
+        
+        # Validate enum values
+        try:
+            HardwareTarget(hardware_target)
+            ModelFramework(model_framework)
+        except ValueError:
+            return jsonify({'error': 'Invalid hardware target or model framework'}), 400
+        
+        # Collect optimization parameters
+        optimization_params = {
+            'hardware_target': hardware_target,
+            'target_size_kb': request.form.get('target_size_kb', 100, type=int),
+            'target_accuracy_threshold': request.form.get('target_accuracy_threshold', 0.95, type=float),
+            'enable_quantization': request.form.get('enable_quantization', 'true').lower() == 'true',
+            'enable_pruning': request.form.get('enable_pruning', 'true').lower() == 'true',
+            'enable_nas': request.form.get('enable_nas', 'false').lower() == 'true',
+            'quantization_type': request.form.get('quantization_type', 'int8'),
+            'pruning_sparsity': request.form.get('pruning_sparsity', 0.5, type=float)
+        }
+        
+        # Process upload with enhanced validation
+        success, result = process_model_upload(
+            file=file,
+            project_id=project_id,
+            model_framework=model_framework,
+            **optimization_params
+        )
+        
+        if not success:
+            logger.error(f"Upload processing failed: {result}")
+            return jsonify(result), 400
         
         # Start background optimization task
+        job_id = result['job_id']
         optimize_model_task.delay(job_id)
         
-        return jsonify(optimization_job.to_dict()), 201
+        logger.info(f"Started optimization job {job_id} for project {project_id}")
+        
+        # Return success response with job details
+        response_data = {
+            'job_id': job_id,
+            'optimization_job': result['optimization_job'],
+            'file_info': result['file_info'],
+            'message': 'Optimization job started successfully'
+        }
+        
+        if result.get('warnings'):
+            response_data['warnings'] = result['warnings']
+        
+        return jsonify(response_data), 201
+        
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Optimization start error: {str(e)}")
+        return jsonify({'error': f'Failed to start optimization: {str(e)}'}), 500
 
 @api_bp.route('/jobs/<job_id>', methods=['GET'])
 def get_optimization_job(job_id):
@@ -213,12 +296,49 @@ def download_optimized_model(job_id):
     if job.status != OptimizationStatus.COMPLETED or not job.optimized_model_path:
         return jsonify({'error': 'Optimized model not available'}), 400
     
-    # In a real implementation, this would return the file
-    # For now, return the file path
+    # Check if file exists
+    if not os.path.exists(job.optimized_model_path):
+        return jsonify({'error': 'Optimized model file not found on disk'}), 404
+    
+    try:
+        # Return the actual file for download
+        return send_file(
+            job.optimized_model_path,
+            as_attachment=True,
+            download_name=f"optimized_{os.path.basename(job.optimized_model_path)}",
+            mimetype='application/octet-stream'
+        )
+    except Exception as e:
+        logger.error(f"Download error for job {job_id}: {str(e)}")
+        return jsonify({'error': 'Failed to download file'}), 500
+
+@api_bp.route('/jobs/<job_id>/files/<file_type>', methods=['GET'])
+def get_job_file_info(job_id, file_type):
+    """Get information about job files"""
+    job = OptimizationJob.query.filter_by(job_id=job_id).first_or_404()
+    
+    from processors.upload_processor import UploadProcessor
+    processor = UploadProcessor()
+    file_paths = processor.get_job_file_paths(job_id)
+    
+    if file_type == 'original':
+        file_path = job.original_model_path
+    elif file_type == 'optimized_model':
+        file_path = job.optimized_model_path
+    else:
+        return jsonify({'error': 'Invalid file type'}), 400
+    
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    file_stat = os.stat(file_path)
+    
     return jsonify({
-        'download_url': f'/api/jobs/{job_id}/files/optimized_model',
-        'file_path': job.optimized_model_path,
-        'file_size_bytes': job.optimized_size_bytes
+        'file_path': file_path,
+        'file_size': file_stat.st_size,
+        'created_at': datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+        'modified_at': datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+        'download_url': f'/api/jobs/{job_id}/download' if file_type == 'optimized_model' else None
     })
 
 @api_bp.route('/subscription', methods=['GET'])
